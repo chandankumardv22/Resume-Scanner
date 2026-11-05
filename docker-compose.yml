@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: resume-analyzer-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - APP_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - RAPIDAPI_KEY=${RAPIDAPI_KEY:-}
+      - RAPIDAPI_HOST=${RAPIDAPI_HOST:-jsearch.p.rapidapi.com}
+      - ADZUNA_APP_ID=${ADZUNA_APP_ID:-}
+      - ADZUNA_APP_KEY=${ADZUNA_APP_KEY:-}
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,${FRONTEND_URL:-}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - DATA_DIR=/app/data
+    volumes:
+      - backend_data:/app/data
+      - backend_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: resume-analyzer-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  backend_data:
+  backend_uploads:
+

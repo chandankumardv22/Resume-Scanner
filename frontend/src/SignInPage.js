@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 import { LogIn, Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react';
-import { formatAuthError, getApiOrigin } from './authUtils';
+import { apiService, formatAuthError } from './api/client';
 
 export default function SignInPage({ onAuthSuccess, onGoRegister, onGoHome }) {
   const [email, setEmail] = useState('');
@@ -10,8 +9,6 @@ export default function SignInPage({ onAuthSuccess, onGoRegister, onGoHome }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
-
-  const api = getApiOrigin();
 
   const handleSignIn = async (e) => {
     e.preventDefault();
@@ -29,7 +26,7 @@ export default function SignInPage({ onAuthSuccess, onGoRegister, onGoHome }) {
 
     setLoading(true);
     try {
-      const { data } = await axios.post(`${api}/api/auth/login`, {
+      const data = await apiService.login({
         email: email.trim(),
         password,
       });

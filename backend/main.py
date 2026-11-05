@@ -19,13 +19,10 @@ if hasattr(sys.stdout, "reconfigure"):
         pass
 
 
+from logger import logger
+
 def _log(msg: object) -> None:
-    try:
-        line = f"{msg}\n".encode("utf-8", errors="replace")
-        sys.stderr.buffer.write(line)
-        sys.stderr.buffer.flush()
-    except Exception:
-        pass
+    logger.info(str(msg))
 
 
 # ==============================================================================
@@ -44,9 +41,10 @@ import requests
 from dotenv import load_dotenv
 
 # --- [TECH STACK: FastAPI] High-performance Web Framework & Middleware ---
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 # --- [TECH STACK: Google Gemini] LLM API for deep resume analysis & roadmaps ---
 from google import genai
@@ -154,18 +152,59 @@ def _is_transient_gemini_error(exc: BaseException) -> bool:
     blob = f"{type(exc).__name__} {exc}".lower()
     return any(marker in blob for marker in _TRANSIENT_GEMINI_MARKERS)
 
+import database
+import s3_storage
+
 _cors_env = os.getenv("CORS_ORIGINS", "").strip()
+_frontend_url = os.getenv("FRONTEND_URL", "").strip()
+ALLOWED_ORIGINS: list[str] = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:3002",
+]
+
 if _cors_env:
-    ALLOWED_ORIGINS = [orig.strip() for orig in _cors_env.split(",") if orig.strip()]
-else:
-    ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:3002",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "http://127.0.0.1:3002",
-    ]
+    for orig in _cors_env.split(","):
+        clean = orig.strip().rstrip("/")
+        if clean and clean not in ALLOWED_ORIGINS:
+            ALLOWED_ORIGINS.append(clean)
+
+if _frontend_url:
+    for orig in _frontend_url.split(","):
+        clean = orig.strip().rstrip("/")
+        if clean and clean not in ALLOWED_ORIGINS:
+            ALLOWED_ORIGINS.append(clean)
+
+# Cloud preview regex: auto-permits Vercel, Netlify, and Render dynamic preview domains
+_cors_regex_env = os.getenv(
+    "CORS_ORIGIN_REGEX",
+    r"^https:\/\/.*\.vercel\.app$|^https:\/\/.*\.netlify\.app$|^https:\/\/.*\.onrender\.com$",
+).strip()
+_allow_origin_regex = _cors_regex_env if _cors_regex_env else None
+
+# Handle if wildcard '*' was specified in CORS_ORIGINS
+if "*" in ALLOWED_ORIGINS or _cors_env == "*":
+    ALLOWED_ORIGINS = [orig for orig in ALLOWED_ORIGINS if orig != "*"]
+    _allow_origin_regex = ".*"
+
+# Optional: Resolve Frontend static build folder for unified/single-container hosting
+_FRONTEND_BUILD_DIR = os.getenv("FRONTEND_BUILD_DIR", "").strip()
+if not _FRONTEND_BUILD_DIR:
+    for _candidate_path in [
+        _BACKEND_DIR.parent / "frontend" / "build",
+        _BACKEND_DIR / "frontend_build",
+        Path("/app/frontend/build"),
+        Path("/app/build"),
+    ]:
+        if _candidate_path.is_dir() and (_candidate_path / "index.html").is_file():
+            _FRONTEND_BUILD_DIR = str(_candidate_path)
+            break
+
+_spa_build_path = Path(_FRONTEND_BUILD_DIR) if _FRONTEND_BUILD_DIR else None
+_spa_index_file = (_spa_build_path / "index.html") if _spa_build_path else None
 
 # ==============================================================================
 # TECH STACK: [FastAPI] - Application instance, OpenAPI documentation & CORS Middleware
@@ -174,16 +213,40 @@ INVALID_RESUME_ERROR = "Invalid document type. Please upload a valid resume."
 
 app = FastAPI(
     title="Resume Analyzer API",
-    version="4.0",
+    version="4.2",
     description="Full-stack AI Career Intelligence Engine powered by FastAPI & Google Gemini",
 )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=_allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount React static files if frontend build exists
+if _spa_build_path and (_spa_build_path / "static").is_dir():
+    app.mount("/static", StaticFiles(directory=str(_spa_build_path / "static")), name="frontend_static")
+
+
+@app.middleware("http")
+async def request_logging_middleware(request, call_next):
+    start_time = time.time()
+    try:
+        response = await call_next(request)
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(f"{request.method} {request.url.path} - {response.status_code} ({duration_ms:.1f}ms)")
+        return response
+    except Exception as exc:
+        duration_ms = (time.time() - start_time) * 1000
+        logger.error(f"{request.method} {request.url.path} - Exception: {type(exc).__name__} ({duration_ms:.1f}ms)")
+        raise
+
+
+@app.on_event("startup")
+def on_app_startup():
+    database.init_db()
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -1149,7 +1212,10 @@ def _build_jobs_payload(recommended_roles: list[str]) -> dict[str, Any]:
 
 
 @app.get("/")
-def root():
+def root(request: Request):
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and "application/json" not in accept and _spa_index_file and _spa_index_file.is_file():
+        return FileResponse(str(_spa_index_file))
     return {
         "service": "Resume Analyzer",
         "tagline": "Career Intelligence Platform",
@@ -1245,6 +1311,14 @@ def health():
         "status": "ok",
         "service": "Resume Analyzer",
         "version": "4.2",
+        "environment": os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")),
+        "database_status": {
+            "configured": database.is_database_configured(),
+            "type": "relational_db" if database.is_database_configured() else "json_fallback",
+        },
+        "s3_storage_status": {
+            "enabled": s3_storage.is_s3_enabled(),
+        },
         "parser_status": {
             "pdfminer_ready": True,
             "pypdf_ready": True,
@@ -1439,11 +1513,16 @@ async def _analyze_impl(file: UploadFile, job_description: str | None = None) ->
     except HTTPException:
         raise
     except Exception as e:
-        _log(f"[analyze] {type(e).__name__}: {e!r}")
-        safe_detail = str(e).encode("ascii", "backslashreplace").decode("ascii")
+        logger.error(f"[analyze] {type(e).__name__}: {e!r}")
+        app_env = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).lower()
+        if app_env == "production":
+            safe_detail = "Resume analysis encountered an internal error. Please try again or check document format."
+        else:
+            safe_detail = str(e).encode("ascii", "backslashreplace").decode("ascii")
+            safe_detail = safe_detail[:500] if safe_detail else f"Analysis failed: {type(e).__name__}"
         raise HTTPException(
             status_code=500,
-            detail=safe_detail[:800] if safe_detail else f"Analysis failed: {type(e).__name__}",
+            detail=safe_detail,
         )
 
 
@@ -1463,6 +1542,18 @@ async def analyze_compat(
     return await _analyze_impl(file, job_description=job_description)
 
 
+# SPA catch-all route for single-container / unified full-stack hosting
+if _spa_build_path and _spa_index_file and _spa_index_file.is_file():
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa_fallback(full_path: str):
+        if full_path.startswith(("api/", "health", "ready", "docs", "redoc", "openapi.json", "analyze")):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+        candidate = _spa_build_path / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(str(candidate))
+        return FileResponse(str(_spa_index_file))
+
+
 _provider = jobs_provider_status()
 if not _provider["any_provider"]:
     _log(
@@ -1473,6 +1564,7 @@ if not _provider["any_provider"]:
 if __name__ == "__main__":
     import uvicorn
 
+    host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
-    reload = os.getenv("ENVIRONMENT", "development").lower() == "development"
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload)
+    reload = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).lower() == "development"
+    uvicorn.run("main:app", host=host, port=port, reload=reload)

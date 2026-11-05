@@ -16,8 +16,13 @@ try:
 except ImportError:
     PdfReader = None
 
-# Configurable limits for safe processing
-MAX_PDF_FILE_SIZE_BYTES: int = int(os.getenv("MAX_PDF_FILE_SIZE_BYTES", 10 * 1024 * 1024))  # 10 MB
+# Configurable limits for safe processing (configurable via MAX_UPLOAD_SIZE_MB or MAX_PDF_FILE_SIZE_BYTES)
+_mb_env = os.getenv("MAX_UPLOAD_SIZE_MB", "").strip()
+if _mb_env and _mb_env.isdigit():
+    MAX_PDF_FILE_SIZE_BYTES: int = int(_mb_env) * 1024 * 1024
+else:
+    MAX_PDF_FILE_SIZE_BYTES: int = int(os.getenv("MAX_PDF_FILE_SIZE_BYTES", 10 * 1024 * 1024))  # 10 MB default
+
 MAX_PDF_PAGES: int = int(os.getenv("MAX_PDF_PAGES", 30))
 MIN_EXTRACTED_CHARS_THRESHOLD: int = int(os.getenv("MIN_EXTRACTED_CHARS_THRESHOLD", 30))
 

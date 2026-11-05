@@ -6,6 +6,11 @@
   "scripts": {
     "build": "cd frontend && npm install && npm run build",
     "start": "cd frontend && npm start",
-    "test": "cd frontend && npm test -- --watchAll=false"
+    "start:backend": "cd backend && uvicorn main:app --host 0.0.0.0 --port 8000 --reload",
+    "test": "cd frontend && npm test -- --watchAll=false",
+    "test:backend": "pytest backend/tests -v",
+    "docker:build": "docker build -t resume-analyzer .",
+    "docker:run": "docker run -p 8000:8000 resume-analyzer",
+    "docker:compose": "docker compose up --build"
   }
 }

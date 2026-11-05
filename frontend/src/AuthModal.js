@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 import { X, UserPlus, LogIn, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
-import { formatAuthError, getApiOrigin } from './authUtils';
+import { apiService, formatAuthError } from './api/client';
 
 export default function AuthModal({ mode, onClose, onAuthSuccess }) {
   const [tab, setTab] = useState(mode === 'register' ? 'register' : 'signin');
@@ -12,8 +11,6 @@ export default function AuthModal({ mode, onClose, onAuthSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
-
-  const api = getApiOrigin();
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -35,7 +32,7 @@ export default function AuthModal({ mode, onClose, onAuthSuccess }) {
 
     setLoading(true);
     try {
-      await axios.post(`${api}/api/auth/register`, {
+      await apiService.register({
         name: name.trim(),
         email: email.trim(),
         password,
@@ -66,7 +63,7 @@ export default function AuthModal({ mode, onClose, onAuthSuccess }) {
 
     setLoading(true);
     try {
-      const { data } = await axios.post(`${api}/api/auth/login`, {
+      const data = await apiService.login({
         email: email.trim(),
         password,
       });

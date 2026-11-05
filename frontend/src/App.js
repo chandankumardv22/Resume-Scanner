@@ -14,8 +14,8 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 // --- [TECH STACK: react-dropzone] Drag-and-drop file upload engine ---
 import { useDropzone } from 'react-dropzone';
 
-// --- [TECH STACK: Axios] Promise-based HTTP Client for Backend Communication ---
-import axios from 'axios';
+// --- [TECH STACK: Axios] Centralized Production API Client ---
+import { apiService, formatApiError, getApiOrigin } from './api/client';
 
 // --- [TECH STACK: Lucide React] Clean, customizable SVG icons ---
 import {
@@ -42,7 +42,6 @@ import {
 import LiveJobOpenings from './LiveJobOpenings';
 import SignInPage from './SignInPage';
 import RegisterPage from './RegisterPage';
-import { getApiOrigin } from './authUtils';
 
 // --- [TECH STACK: jsPDF & jspdf-autotable] Career Report Generator ---
 import { generateCareerReportPdf } from './pdfReport';
@@ -60,27 +59,6 @@ const FEATURE_ICONS = {
   globe: Globe,
   shield: Shield,
 };
-
-function getAnalyzeUrl() {
-  return `${getApiOrigin()}/analyze`;
-}
-
-function formatApiError(err) {
-  const data = err.response?.data;
-  if (data?.error) return data.error;
-  if (data?.detail?.error) return data.detail.error;
-  if (typeof data?.detail === 'string') return data.detail;
-  if (Array.isArray(data?.detail)) {
-    const joined = data.detail
-      .map((x) => (typeof x === 'string' ? x : x?.msg))
-      .filter(Boolean)
-      .join('; ');
-    if (joined) return joined;
-  }
-  if (data?.message) return data.message;
-  if (err.response?.status) return `Request failed with status code ${err.response.status}`;
-  return err.message || 'Analysis failed. Please try again.';
-}
 
 function useCountUp(target, duration = 1200) {
   const [value, setValue] = useState(0);
@@ -508,16 +486,14 @@ function App() {
       if (saved?.token && saved?.user) {
         setAuthToken(saved.token);
         setAuthUser(saved.user);
-        axios
-          .get(`${getApiOrigin()}/api/auth/me`, {
-            headers: { Authorization: `Bearer ${saved.token}` },
-          })
+        apiService
+          .getMe(saved.token)
           .then((r) => {
-            if (r.data?.user) {
-              setAuthUser(r.data.user);
+            if (r?.user) {
+              setAuthUser(r.user);
               localStorage.setItem(
                 AUTH_STORAGE_KEY,
-                JSON.stringify({ token: saved.token, user: r.data.user }),
+                JSON.stringify({ token: saved.token, user: r.user }),
               );
             }
           })
@@ -533,17 +509,15 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const api = getApiOrigin();
-    axios.get(`${api}/api/platform-stats`).then((r) => setPlatformStats(r.data)).catch(() => {});
-    axios.get(`${api}/api/features`).then((r) => setFeatures(r.data?.features || [])).catch(() => {});
+    apiService.getPlatformStats().then((data) => setPlatformStats(data)).catch(() => {});
+    apiService.getFeatures().then((data) => setFeatures(data?.features || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
-    const api = getApiOrigin();
     setExploreLoading(true);
-    axios
-      .get(`${api}/api/explore-jobs?role=${encodeURIComponent(selectedExploreRole)}`)
-      .then((r) => setExploreJobsData(r.data))
+    apiService
+      .exploreJobs(selectedExploreRole)
+      .then((data) => setExploreJobsData(data))
       .catch(() => {})
       .finally(() => setExploreLoading(false));
   }, [selectedExploreRole]);
@@ -578,11 +552,7 @@ function App() {
   const handleLogout = async () => {
     try {
       if (authToken) {
-        await axios.post(
-          `${getApiOrigin()}/api/auth/logout`,
-          {},
-          { headers: { Authorization: `Bearer ${authToken}` } },
-        );
+        await apiService.logout(authToken);
       }
     } catch {
       /* ignore */
@@ -598,18 +568,15 @@ function App() {
     setResults(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file, file.name);
-      const response = await axios.post(getAnalyzeUrl(), formData, { timeout: 120000 });
+      const data = await apiService.analyzeResume(file);
 
-      if (response.data?.error) {
-        setError(response.data.error);
+      if (data?.error) {
+        setError(data.error);
         return;
       }
 
-      setResults(response.data);
-      const api = getApiOrigin();
-      axios.get(`${api}/api/platform-stats`).then((r) => setPlatformStats(r.data)).catch(() => {});
+      setResults(data);
+      apiService.getPlatformStats().then((stats) => setPlatformStats(stats)).catch(() => {});
       setTimeout(() => {
         document.getElementById('dashboard')?.scrollIntoView({ behavior: 'smooth' });
       }, 300);

@@ -317,12 +317,16 @@ Resume-scanner--main/
 
 ---
 
-## Deployment Tips
+## Cloud Deployment
 
-- Host the backend on **Render**, **Railway**, or **AWS**
-- Deploy the frontend on **Vercel** or **Netlify**
-- Set environment variables in the hosting dashboard — do not commit `.env`
-- Point `REACT_APP_API_URL` to your deployed API URL for production builds
+The repository includes pre-built cloud infrastructure configurations:
+
+- **1-Click Render Blueprint (`render.yaml`):** Deploys both backend (FastAPI) and frontend (React) automatically on Render.
+- **Vercel + Render:** Deploy frontend to Vercel and backend to Render with pre-configured CORS and SPA rewrites (`vercel.json`).
+- **Single-Container Full-Stack (`Dockerfile`):** Multi-stage build bundling React and FastAPI for Google Cloud Run, AWS App Runner, Fly.io, or Railway (`railway.json`).
+- **Docker Compose (`docker-compose.yml`):** Multi-container setup for local staging or VPS deployment (AWS EC2, DigitalOcean).
+
+👉 See [**DEPLOYMENT.md**](./DEPLOYMENT.md) for the complete step-by-step cloud setup and configuration guide.
 
 ---
 

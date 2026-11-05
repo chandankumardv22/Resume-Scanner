@@ -82,7 +82,7 @@ def _load_ml_model():
     _ml_model_attempted = True
     try:
         import joblib
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.getenv("MODEL_DIR") or os.path.dirname(os.path.abspath(__file__))
         model_path = os.path.join(base_dir, "role_model.pkl")
         vec_path = os.path.join(base_dir, "role_vectorizer.pkl")
         if os.path.isfile(model_path) and os.path.isfile(vec_path):

@@ -1,0 +1,60 @@
+# ==============================================================================
+# Render Infrastructure Blueprint (render.yaml)
+# Production Full-Stack Deployment Specification for Resume Analyzer
+# ==============================================================================
+version: "1"
+
+services:
+  # ----------------------------------------------------------------------------
+  # Backend API Service (FastAPI + Python 3.11)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: resume-analyzer-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: "pip install --no-cache-dir -r requirements.txt && python train_role_model.py"
+    startCommand: "gunicorn -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT --timeout 120 main:app"
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: APP_ENV
+        value: production
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: RAPIDAPI_KEY
+        sync: false
+      - key: RAPIDAPI_HOST
+        value: jsearch.p.rapidapi.com
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_APP_KEY
+        sync: false
+      - key: CORS_ORIGIN_REGEX
+        value: "^https:\\/\\/.*\\.vercel\\.app$|^https:\\/\\/.*\\.netlify\\.app$|^https:\\/\\/.*\\.onrender\\.com$"
+
+  # ----------------------------------------------------------------------------
+  # Frontend Static Web App (React 19 / Create React App)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: resume-analyzer-web
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: ./build
+    autoDeploy: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: REACT_APP_API_URL
+        fromService:
+          type: web
+          name: resume-analyzer-api
+          envVarKey: RENDER_EXTERNAL_URL
