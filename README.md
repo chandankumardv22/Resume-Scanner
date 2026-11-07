@@ -340,3 +340,4 @@ This project is licensed under the **MIT License**.
 
 If this project helped you, consider giving it a star on GitHub:  
 https://github.com/theakashsp/Resume-scanner-
+# Resume-Scanner
