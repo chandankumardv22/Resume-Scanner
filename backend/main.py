@@ -490,8 +490,13 @@ def fetch_jsearch_jobs(role_category: str, limit: int = JOBS_PER_ROLE) -> list[d
     query = f"{role_category} in India"
     out: list[dict[str, Any]] = []
     try:
+        host = RAPIDAPI_HOST.strip().lower().rstrip("/")
+        if host.startswith("http://") or host.startswith("https://"):
+            base_url = host
+        else:
+            base_url = f"https://{host}"
         r = requests.get(
-            "https://jsearch.p.rapidapi.com/search",
+            f"{base_url}/search",
             headers={
                 "X-RapidAPI-Key": RAPIDAPI_KEY,
                 "X-RapidAPI-Host": RAPIDAPI_HOST,
