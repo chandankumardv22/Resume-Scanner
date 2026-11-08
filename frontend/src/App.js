@@ -307,22 +307,42 @@ function AtsScoreRing({ score }) {
   const circ = 2 * Math.PI * radius;
   const offset = circ - (score / 100) * circ;
   const color = score >= 75 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444';
+  const status = score >= 75 ? 'Excellent' : score >= 50 ? 'Good' : 'Needs Improvement';
+  const statusClass = score >= 75 ? 'excellent' : score >= 50 ? 'good' : 'needs-work';
 
   return (
-    <div className="tw-score">
-      <svg viewBox="0 0 140 140" className="tw-score__svg">
-        <circle cx="70" cy="70" r={radius} className="tw-score__track" />
-        <circle
-          cx="70"
-          cy="70"
-          r={radius}
-          className="tw-score__fill"
-          style={{ strokeDasharray: circ, strokeDashoffset: offset, stroke: color }}
-        />
-      </svg>
-      <div className="tw-score__label">
-        <span className="tw-score__value" style={{ color }}>{score}</span>
-        <span className="tw-score__caption">ATS Score</span>
+    <div className="tw-ats-score">
+      <div className="tw-ats-score__head">
+        <span>ATS Compatibility</span>
+        <span className={`tw-ats-score__status tw-ats-score__status--${statusClass}`}>{status}</span>
+      </div>
+      <div className="tw-score">
+        <svg viewBox="0 0 140 140" className="tw-score__svg" aria-label={`ATS score ${score} out of 100`}>
+          <circle cx="70" cy="70" r={radius} className="tw-score__track" />
+          <circle
+            cx="70"
+            cy="70"
+            r={radius}
+            className="tw-score__fill"
+            style={{ strokeDasharray: circ, strokeDashoffset: offset, stroke: color }}
+          />
+        </svg>
+        <div className="tw-score__label">
+          <span className="tw-score__value" style={{ color }}>{score}</span>
+          <span className="tw-score__outof">out of 100</span>
+        </div>
+      </div>
+      <div className="tw-score__scale" aria-label="Score benchmark">
+        <div className="tw-score__scale-track">
+          <span className="tw-score__scale-low" />
+          <span className="tw-score__scale-mid" />
+          <span className="tw-score__scale-high" />
+        </div>
+        <div className="tw-score__scale-labels">
+          <span>Needs work<br /><strong>0-49</strong></span>
+          <span>Good<br /><strong>50-74</strong></span>
+          <span>Excellent<br /><strong>75-100</strong></span>
+        </div>
       </div>
     </div>
   );
@@ -732,7 +752,15 @@ function App() {
                 ].map(([label, val]) => (
                   <div key={label} className="tw-dashboard__meta-item">
                     <strong>{label}</strong>
-                    {val}
+                    {label === 'Recommended Roles' && recommendedRoles.length > 0 ? (
+                      <ul className="tw-role-list">
+                        {recommendedRoles.map((recommendedRole, index) => (
+                          <li key={`${recommendedRole}-${index}`}>{recommendedRole}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      val
+                    )}
                   </div>
                 ))}
               </div>
@@ -751,11 +779,13 @@ function App() {
 
                 <div className="tw-card">
                   <h3>Matched Skills</h3>
-                  <ul className="tw-list">
-                    {matched.length > 0 ? matched.map((s, i) => <li key={i}>{s}</li>) : (
-                      <li className="tw-list__empty">No professional skills detected.</li>
+                  <div className="tw-chips">
+                    {matched.length > 0 ? matched.map((s, i) => (
+                      <span className="tw-chip tw-chip--matched" key={i}>{s}</span>
+                    )) : (
+                      <span className="tw-list__empty">No professional skills detected.</span>
                     )}
-                  </ul>
+                  </div>
                   <h3 className="tw-card__subtitle">Skill Gaps</h3>
                   <div className="tw-chips">
                     {missing.length > 0 ? missing.map((s, i) => (
